@@ -1,6 +1,7 @@
 //Basic code für Vape
 //OHNE Display, OHNE Rotary Encoder, OHNE Ohmmeter für Coil
-
+//Der Code ist nicht getestet und von Elektrotechnik(Volt,Ampere,Ohm,Watt) hab ich nicht wirklich ein plan
+//deswegen sollst du dir dat mal anschauen und dann können wir das mal durchgehen
 
 //Pinbelegung
 #define FIREBUTTON  2   //Feuerknopf | Digital Input
@@ -12,15 +13,17 @@
 #define RE_BUTTON   5   //Drehgeber Button
 
 //Vape Begrenzungen
-#define MinWatt 10
-#define MaxWatt 150
-#define MinOhm  0.1
-#define MaxOhm  2.0
-#define MaxAmp  35
+#define LockTime  400 //=Zeit in ms die max. zwischen den klicks liegt (für die 5klick sperre)
+#define MinWatt   10
+#define MaxWatt   150
+#define MinOhm    0.1
+#define MaxOhm    2.0
+#define MaxAmp    35
 
 //Globale Variablen
 int Watt = 50;
 float CoilOhm = 0.2f;
+//sollen später im EEPROM gespeichert werden
 
 //Funktionsprototypen
 void rotaryEncoder();
@@ -54,7 +57,7 @@ void loop()
   
   float vBat, vBatA, vBatB;
   vBat = getVBat(&vBatA,&vBatB);
-  if(vBatA < 3.4 || vBatB < 3.4)
+  if(vBatA < 3.4f || vBatB < 3.4f)
   {
     //Display: Battery Low
     Serial.print("Battery Low | A: "); Serial.print(vBatA); Serial.print("V, B: "); Serial.print(vBatB); Serial.print("V\n");
@@ -80,9 +83,9 @@ void loop()
   if(digitalRead(FIREBUTTON) == HIGH)
   {
     //Für Tastensperre
-    if(millis() - tLastFire <= 250)
+    if( (millis() - tLastFire) <= LockTime && (millis() - tLastFire) > 10 ) // >10 = Tasterentprellung
       counter++;
-    else
+    if( (millis() - tLastFire) > LockTime)
       counter=0;
     tLastFire = millis();
 
@@ -91,7 +94,7 @@ void loop()
     {
       fire();
     }
-    analogWrite(GATE_PIN, 0);
+    analogWrite(GATE_PIN, 0); //Hätte ich fast vergessen
   }
   
   
@@ -100,15 +103,18 @@ void loop()
 void fire()
 {  
   float vBat = getVBat();  
-  float vOut = sqrt( Watt * CoilOhm ); //Ohmsches Gesetz U=√P*R
+  float vOut = sqrt( Watt * CoilOhm ); //Spannung die durch den Coil geht | Ohmsches Gesetz U=√P*R
 
-  float amp = vOut / CoilOhm;
+  //Da es nach meinem kenntnisstand eine mechanische Sicherung nicht bringt
+  //einfach Stromstärke ausrechnen und begrenzen wenn zu hoch
+  float amp = vOut / CoilOhm; //Frage: Ist das dann die Stromstärke die aus den Akkus gezogen wird? Ich denk schon
   if(amp > MaxAmp)
   {
     //Display: Ampere too high
     vOut = CoilOhm * MaxAmp;
-  }
+  } //Nach meinen berechnungen springt das eh nur ein wenn man über zweihundertundirgendwas watt dampft oder mach ich hier was falsch
   
+  //Wenn ich pwm+mosfet richtig verstanden habe gate=0->Aus & gate=255->100% von Batteriespannung
   int gate;
   if (vBat > vOut) //Kann reguliert werden
     gate =  ( 255 / vBat ) * vOut;
@@ -125,13 +131,19 @@ void fire()
 }
 
 float getVBat (float *A, float *B)
+/* FAQ:
+Q: Was sind die Sternchen? A: Pointer
+Q: Und warum machen wir das nicht einfach über globale Variablen? A: Weil das schlechter programmierstil ist
+Danke für ihre Aufmerksamkeit */
 { //https://www.electroschematics.com/9351/arduino-digital-voltmeter/
+  
+  //Für höhere genauigkeit müssen wir Ohm der Widerstände 1x ausmessen und anpassen
   float R1 = 100000.f;
   float R2 = 10000.f;
 
   //Gesamt Voltage berechnen
   int value = analogRead(VBAT_IN);
-  float vout = (value * 5.0) / 1024.0;
+  float vout = (value * 5.0) / 1024.0; //Für höhere genauigkeit müssen wir die Arduino 5v Spannung messen und anpassen (bei 5.0)
   float vBat = vout / ( R2 / (R1+R2) );
 
   if(A != NULL && B!= NULL) //Beide Zellen berechnen
@@ -140,7 +152,6 @@ float getVBat (float *A, float *B)
     vout = (value * 5.0) / 1024.0;
     float vA = vout / ( R2 / (R1+R2) );
     float vB = vBat - vA;
-    //In die Pointer schreiben
     *A = vA;
     *B = vB;
   }
