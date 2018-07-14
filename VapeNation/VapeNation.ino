@@ -1,7 +1,9 @@
 //Basic code für Vape
-//OHNE Display, OHNE Rotary Encoder, OHNE Ohmmeter für Coil
+//OHNE Display, OHNE Ohmmeter für Coil
 //Der Code ist nicht getestet und von Elektrotechnik(Volt,Ampere,Ohm,Watt) hab ich nicht wirklich ein plan
 //deswegen sollst du dir dat mal anschauen und dann können wir das mal durchgehen
+
+#include <EEPROM.h>
 
 //Pinbelegung
 #define FIREBUTTON  2   //Feuerknopf | Digital Input
@@ -21,14 +23,13 @@
 #define MaxAmp    35
 
 //Globale Variablen
-int Watt = 50;
 float CoilOhm = 0.2f;
 //sollen später im EEPROM gespeichert werden
 
 //Funktionsprototypen
-void rotaryEncoder();
+byte rotaryEncoder();
 float getVBat (float *A = NULL, float *B = NULL);
-void fire();
+void fire(int Watt);
 
 
 void setup()
@@ -37,6 +38,9 @@ void setup()
   pinMode(VBAT_IN, INPUT);
   pinMode(VMB_IN, INPUT);
   pinMode(GATE_PIN, OUTPUT);
+  pinMode(RE_CLK, INPUT);
+  pinMode(RE_DT, INPUT);
+  pinMode(RE_BUTTON, INPUT);
   
 }
 
@@ -53,8 +57,28 @@ void loop()
     counter = 0;
     Serial.println("Tastensperre umgeschaltet");
   }
-    
   
+  //Watteinstellung
+  static int Watt = 0;
+  if(Watt == 0)
+    EEPROM.get(0, Watt);
+  switch(rotaryEncoder())
+  {
+      case(1):
+      Watt++;
+      EEPROM.put(0, Watt);
+      break;
+      case(2):
+      Watt--;
+      EEPROM.put(0, Watt);
+      break;
+  }
+  if(Watt<MinWatt)
+    Watt=MinWatt;
+  if(Watt>MaxWatt)
+    Watt=MaxWatt;
+  
+  //Akkustand prüfen
   float vBat, vBatA, vBatB;
   vBat = getVBat(&vBatA,&vBatB);
   if(vBatA < 3.4f || vBatB < 3.4f)
@@ -64,10 +88,7 @@ void loop()
     return;
   }
 
-  if(Watt<MinWatt)
-    Watt=MinWatt;
-  if(Watt>MaxWatt)
-    Watt=MaxWatt;
+  //CoilOhm prüfen
   if(CoilOhm < MinOhm)
   {
     //Display: Ohm too low
@@ -80,6 +101,7 @@ void loop()
     return;
   }
 
+  //Feuerknopf
   if(digitalRead(FIREBUTTON) == HIGH)
   {
     //Für Tastensperre
@@ -92,7 +114,7 @@ void loop()
     //Vaperino
     while(digitalRead(FIREBUTTON) == HIGH && !bLock) //AUFPASSEN: Öffner oder Schließer  
     {
-      fire();
+      fire(Watt);
     }
     analogWrite(GATE_PIN, 0); //Hätte ich fast vergessen
   }
@@ -100,7 +122,7 @@ void loop()
   
 }
 
-void fire()
+void fire(int Watt)
 {  
   float vBat = getVBat();  
   float vOut = sqrt( Watt * CoilOhm ); //Spannung die durch den Coil geht | Ohmsches Gesetz U=√P*R
@@ -159,8 +181,25 @@ Danke für ihre Aufmerksamkeit */
   return vBat;
 }
 
-void rotaryEncoder()
+byte rotaryEncoder()
 {
+  //Rückgabewerte:
+  //0: keine Rotation
+  //1: im Uhrzeigersinn
+  //2: gegen Uhrzeigersinn
   
+  byte ret = 0;
+  static int lastState = digitalRead(RE_CLK);
+  
+  int state = digitalRead(RE_CLK);
+  if(state != lastState)
+  {
+    if(digitalRead(RE_DT) != state) //clockwise
+      ret = 1;
+    else  //counter-clockwise
+      ret = 2;
+  }
+  lastState = state;
+  return ret;
 }
 
