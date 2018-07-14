@@ -24,7 +24,6 @@
 
 //Globale Variablen
 float CoilOhm = 0.2f;
-//sollen später im EEPROM gespeichert werden
 
 //Funktionsprototypen
 byte rotaryEncoder();
@@ -42,6 +41,7 @@ void setup()
   pinMode(RE_DT, INPUT);
   pinMode(RE_BUTTON, INPUT);
   
+  Serial.begin(9600);
 }
 
 
@@ -77,17 +77,47 @@ void loop()
     Watt=MinWatt;
   if(Watt>MaxWatt)
     Watt=MaxWatt;
-  
-  //Akkustand prüfen
+
+  //Feuerknopf
+  if(digitalRead(FIREBUTTON) == HIGH)
+  {
+    //Für Tastensperre
+    int t = millis() - tLastFire;
+    if( t <= LockTime && t > 10 ) // >10 = Tasterentprellung
+      counter++;
+    if( t > LockTime)
+      counter=0;
+    tLastFire = millis();
+    
+    //Vaperino
+    while(digitalRead(FIREBUTTON) == HIGH && !bLock) //AUFPASSEN: Öffner oder Schließer  
+    {
+      fire(Watt);
+
+      if(millis()-tLastFire > 10000)  //Wenn Feuertaste länger als 10s gedrückt
+      {
+        bLock = true; //Sperre aktivieren, sonst feuert vape ja direkt wieder
+        continue;     //Aus while-Schleife springen
+      } 
+    }
+    analogWrite(GATE_PIN, 0); //Hätte ich fast vergessen
+  }
+}
+
+
+void fire(int Watt)
+{  
   float vBat, vBatA, vBatB;
   vBat = getVBat(&vBatA,&vBatB);
+  
+  //Akkustand prüfen
   if(vBatA < 3.4f || vBatB < 3.4f)
   {
     //Display: Battery Low
     Serial.print("Battery Low | A: "); Serial.print(vBatA); Serial.print("V, B: "); Serial.print(vBatB); Serial.print("V\n");
     return;
   }
-
+  
   //CoilOhm prüfen
   if(CoilOhm < MinOhm)
   {
@@ -97,38 +127,15 @@ void loop()
   }
   if(CoilOhm > MaxOhm)
   {
+    //Display: Ohm too high
     Serial.print("Ohm 2high: "); Serial.print(CoilOhm); Serial.print("Ω\n");
     return;
   }
-
-  //Feuerknopf
-  if(digitalRead(FIREBUTTON) == HIGH)
-  {
-    //Für Tastensperre
-    if( (millis() - tLastFire) <= LockTime && (millis() - tLastFire) > 10 ) // >10 = Tasterentprellung
-      counter++;
-    if( (millis() - tLastFire) > LockTime)
-      counter=0;
-    tLastFire = millis();
-
-    //Vaperino
-    while(digitalRead(FIREBUTTON) == HIGH && !bLock) //AUFPASSEN: Öffner oder Schließer  
-    {
-      fire(Watt);
-    }
-    analogWrite(GATE_PIN, 0); //Hätte ich fast vergessen
-  }
   
-  
-}
-
-void fire(int Watt)
-{  
-  float vBat = getVBat();  
+  //Berechnung der Ausgangsspannung (Drain vom Mosfet)
   float vOut = sqrt( Watt * CoilOhm ); //Spannung die durch den Coil geht | Ohmsches Gesetz U=√P*R
 
-  //Da es nach meinem kenntnisstand eine mechanische Sicherung nicht bringt
-  //einfach Stromstärke ausrechnen und begrenzen wenn zu hoch
+  //Stromstärke begrenzen wenn zu hoch
   float amp = vOut / CoilOhm; //Frage: Ist das dann die Stromstärke die aus den Akkus gezogen wird? Ich denk schon
   if(amp > MaxAmp)
   {
@@ -147,9 +154,6 @@ void fire(int Watt)
     gate = 255; //Geb volle pulle
   }
   analogWrite(GATE_PIN, gate);
-    
-
-    
 }
 
 float getVBat (float *A, float *B)
