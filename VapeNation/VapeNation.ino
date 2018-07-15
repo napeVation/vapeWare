@@ -1,4 +1,4 @@
-//Basic code für Vape
+//Code für Vape
 //OHNE Display, OHNE Ohmmeter für Coil
 //Der Code ist nicht getestet und von Elektrotechnik(Volt,Ampere,Ohm,Watt) hab ich nicht wirklich ein plan
 //deswegen sollst du dir dat mal anschauen und dann können wir das mal durchgehen
@@ -22,14 +22,21 @@
 #define MaxOhm    2.0
 #define MaxAmp    35
 
-//Globale Variablen
-float CoilOhm = 0.2f;
+//EEPROM Adressen
+#define ADR_WATT  0 //int
+#define ADR_PUFFS 4 //int
+#define ADR_OHM   8 //float
 
 //Funktionsprototypen
 byte rotaryEncoder();
 float getVBat (float *A = NULL, float *B = NULL);
-void fire(int Watt);
-
+void fire(int Watt, float CoilOhm);
+bool query(String question);
+float getCoilOhm()
+{
+  //tbd; Soll ohm am coil messen
+  return 0.f;
+}
 
 void setup()
 {
@@ -47,9 +54,10 @@ void setup()
 
 void loop()
 {
+  static int tLastFire = millis(); //Speichert die Zeit an welcher der Feuerknopf zuletzt gedrückt wurde
+  
   //5 Klick Tastensperre
   static bool bLock = true;
-  static int tLastFire = millis();
   static byte counter = 0;
   if(counter == 5)
   {
@@ -59,25 +67,46 @@ void loop()
   }
   
   //Watteinstellung
-  static int Watt = 0;
-  if(Watt == 0)
-    EEPROM.get(0, Watt);
+  static int watt = 0;
+  if(watt == 0)
+    EEPROM.get(ADR_WATT, watt);
   switch(rotaryEncoder())
   {
       case(1):
-      Watt++;
-      EEPROM.put(0, Watt);
+      watt++;
+      EEPROM.put(ADR_WATT, watt);
       break;
       case(2):
-      Watt--;
-      EEPROM.put(0, Watt);
+      watt--;
+      EEPROM.put(ADR_WATT, watt);
       break;
   }
-  if(Watt<MinWatt)
-    Watt=MinWatt;
-  if(Watt>MaxWatt)
-    Watt=MaxWatt;
+  if(watt<MinWatt)
+    watt=MinWatt;
+  if(watt>MaxWatt)
+    watt=MaxWatt;
+  
+  
+  //Coil Widerstand
+  float coilohm = -1.f;/*
+  if(coilohm == -1.f)
+    EEPROM.get(ADR_OHM, coilohm);
+  if( coilohm != 0.00f && ( (coilohm - getCoilOhm()) >= 0.1f || (coilohm - getCoilOhm()) <= -0.1f) ))
+  {
+    if(query("Neuer Coil?"))
+    {
+      coilohm = getCoilOhm();
+      EEPROM.put(ADR_OHM, coilohm);
+    }  
+  }
+  else if(getCoilOhm
+  */ 
 
+  //Züge
+  static int puffs = -1;
+  if(puffs == -1)
+    EEPROM.get(ADR_PUFFS, puffs);
+  
   //Feuerknopf
   if(digitalRead(FIREBUTTON) == HIGH)
   {
@@ -92,20 +121,24 @@ void loop()
     //Vaperino
     while(digitalRead(FIREBUTTON) == HIGH && !bLock) //AUFPASSEN: Öffner oder Schließer  
     {
-      fire(Watt);
+      fire(watt, coilohm);
 
       if(millis()-tLastFire > 10000)  //Wenn Feuertaste länger als 10s gedrückt
-      {
-        bLock = true; //Sperre aktivieren, sonst feuert vape ja direkt wieder
-        continue;     //Aus while-Schleife springen
-      } 
+        bLock = true; //Sperre aktivieren
     }
     analogWrite(GATE_PIN, 0); //Hätte ich fast vergessen
+    
+    //Für Züge
+    if(millis()-tLastFire >= 1000)
+    {
+      puffs++;
+      EEPROM.put(ADR_PUFFS, puffs);
+    }
   }
 }
 
 
-void fire(int Watt)
+void fire(int Watt, float CoilOhm)
 {  
   float vBat, vBatA, vBatB;
   vBat = getVBat(&vBatA,&vBatB);
@@ -157,10 +190,6 @@ void fire(int Watt)
 }
 
 float getVBat (float *A, float *B)
-/* FAQ:
-Q: Was sind die Sternchen? A: Pointer
-Q: Und warum machen wir das nicht einfach über globale Variablen? A: Weil das schlechter programmierstil ist
-Danke für ihre Aufmerksamkeit */
 { //https://www.electroschematics.com/9351/arduino-digital-voltmeter/
   
   //Für höhere genauigkeit müssen wir Ohm der Widerstände 1x ausmessen und anpassen
@@ -205,5 +234,25 @@ byte rotaryEncoder()
   }
   lastState = state;
   return ret;
+}
+
+bool query(String question)
+{
+  // YES/TRUE - NO/FALSE Abfrage über Drehgeber
+  //CCW = Y/T | CW = N/F
+  
+  //Display: Question
+  Serial.println(question);
+  Serial.println("<-- YES | NO -->");
+  byte tmp = 0;
+  byte r = 0;
+  while(r == 0 || digitalRead(RE_BUTTON) == LOW)
+  {
+    tmp = rotaryEncoder();
+    if(tmp != 0)
+      r = tmp;
+  }
+  
+  return (r==2) ? true : false;
 }
 
