@@ -15,14 +15,14 @@
 #define RE_BUTTON   5   //Drehgeber Button
 
 //Vape Begrenzungen
-#define LockTime  400 //=Zeit in ms die max. zwischen den klicks liegt (für die 5klick sperre)
-#define MinWatt   10
-#define MaxWatt   150
-#define MinOhm    0.1
-#define MaxOhm    2.0
-#define MaxAmp    35
+#define MCTIME     400 //Multi-Click-Time (ms)
+#define WATT_MIN   10
+#define WATT_MAX   150
+#define OHM_MIN    0.1
+#define OHM_MAX    2.0
+#define AMP_MAX    35
 
-//EEPROM Adressen
+//EEPROM Adressen (0-1024)
 #define ADR_WATT  0 //int
 #define ADR_PUFFS 4 //int
 #define ADR_OHM   8 //float
@@ -81,10 +81,10 @@ void loop()
       EEPROM.put(ADR_WATT, watt);
       break;
   }
-  if(watt<MinWatt)
-    watt=MinWatt;
-  if(watt>MaxWatt)
-    watt=MaxWatt;
+  if(watt<WATT_MIN)
+    watt=WATT_MIN;
+  if(watt>WATT_MAX)
+    watt=WATT_MAX;
   
   
   //Coil Widerstand
@@ -112,9 +112,9 @@ void loop()
   {
     //Für Tastensperre
     int t = millis() - tLastFire;
-    if( t <= LockTime && t > 10 ) // >10 = Tasterentprellung
+    if( t <= MCTIME && t > 10 ) // >10 = Tasterentprellung
       counter++;
-    if( t > LockTime)
+    if( t > MCTIME)
       counter=0;
     tLastFire = millis();
     
@@ -152,13 +152,13 @@ void fire(int Watt, float CoilOhm)
   }
   
   //CoilOhm prüfen
-  if(CoilOhm < MinOhm)
+  if(CoilOhm < OHM_MIN)
   {
     //Display: Ohm too low
     Serial.print("Ohm 2low: "); Serial.print(CoilOhm); Serial.print("Ω\n");
     return;
   }
-  if(CoilOhm > MaxOhm)
+  if(CoilOhm > OHM_MAX)
   {
     //Display: Ohm too high
     Serial.print("Ohm 2high: "); Serial.print(CoilOhm); Serial.print("Ω\n");
@@ -170,10 +170,10 @@ void fire(int Watt, float CoilOhm)
 
   //Stromstärke begrenzen wenn zu hoch
   float amp = vOut / CoilOhm; //Frage: Ist das dann die Stromstärke die aus den Akkus gezogen wird? Ich denk schon
-  if(amp > MaxAmp)
+  if(amp > AMP_MAX)
   {
     //Display: Ampere too high
-    vOut = CoilOhm * MaxAmp;
+    vOut = CoilOhm * AMP_MAX;
   } //Nach meinen berechnungen springt das eh nur ein wenn man über zweihundertundirgendwas watt dampft oder mach ich hier was falsch
   
   //Wenn ich pwm+mosfet richtig verstanden habe gate=0->Aus & gate=255->100% von Batteriespannung
@@ -201,7 +201,7 @@ float getVBat (float *A, float *B)
   float vout = (value * 5.0) / 1024.0; //Für höhere genauigkeit müssen wir die Arduino 5v Spannung messen und anpassen (bei 5.0)
   float vBat = vout / ( R2 / (R1+R2) );
 
-  if(A != NULL && B!= NULL) //Beide Zellen berechnen
+  if(A != NULL && B != NULL) //Beide Zellen berechnen
   {
     value = analogRead(VMB_IN);
     vout = (value * 5.0) / 1024.0;
