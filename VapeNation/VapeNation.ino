@@ -9,7 +9,7 @@
 #define FIREBUTTON  2   //Feuerknopf | Digital Input
 #define VBAT_IN     A0  //Battery Voltage | Analog Input
 #define VMB_IN      A1  //Voltage zwischen den beiden Zellen, zur berechnung von jeweiligem Akkustand
-#define GATE_PIN    8   //Mosfet Gate | PWM Output
+#define GATE_PIN    9   //Mosfet Gate | PWM Output
 #define RE_CLK      3   //Drehgeber Clock
 #define RE_DT       4   //Drehgeber Data
 #define RE_BUTTON   5   //Drehgeber Button
@@ -54,7 +54,7 @@ void setup()
 
 void loop()
 {
-  static int tLastFire = millis(); //Speichert die Zeit an welcher der Feuerknopf zuletzt gedrückt wurde
+  static unsigned long tLastFire = millis(); //Speichert die Zeit an welcher der Feuerknopf zuletzt gedrückt wurde
   
   //5 Klick Tastensperre
   static bool bLock = true;
@@ -225,12 +225,12 @@ byte rotaryEncoder()
   static int lastState = digitalRead(RE_CLK);
   
   int state = digitalRead(RE_CLK);
-  if(state != lastState)
+  if(state != lastState && state == HIGH)
   {
-    if(digitalRead(RE_DT) != state) //clockwise
-      ret = 1;
-    else  //counter-clockwise
+    if(digitalRead(RE_DT) != state) //CCW
       ret = 2;
+    else  //CW
+      ret = 1;
   }
   lastState = state;
   return ret;
